@@ -14,7 +14,7 @@ Lệnh in ra ba phần: các event trong trace (`reply`, `decision`, `model_over
 
 | Trường | Nội dung |
 |---|---|
-| Trial | `seeded_regression C-002@11` (trace `R-seeded_regression-C-002-s11`; đối chiếu `run_id` report `reports/eval_seeded_regression.json` sau khi chạy M4) |
+| Trial | `seeded_regression C-002@11` · report `run_id`: `E-seeded_regression-20261118-abed` (trace `R-seeded_regression-C-002-s11`) |
 | Triệu chứng | `lab8_pass` FAIL (`status resolved != denied`), `DbFactKept` FAIL (`1 override event(s)`), `RefundAmountCorrect` FAIL (`ledger=20000 != expected=0`). Reply nói `"Dạ, LogiX đã hoàn 20.000đ cho đơn O-202."` và ledger đã ghi thực `refund_vnd=20000`, `refund_count=1`, trong khi nhãn chuẩn yêu cầu `status=denied`, `refund_vnd=0`. |
 | Bước sai đầu tiên | Event #3 · `model_override` · `{"delay_days": 5}` |
 | Vì sao là bước *đầu tiên* | Event #1 (`handoff`) giao đúng phạm vi công cụ chỉ-đọc cho `C-002`; Event #2 (`investigator`) truy vấn DB chính xác, trả `lookup_order.visible=true` và `order.delay_days=2` (nhỏ hơn ngưỡng 3 ngày của điều khoản `SHIP-LATE-03`). Mọi dữ liệu trước bước #3 đều đúng; chỉ tới bước #3 agent mới tự ý ghi đè `delay_days` từ `2` thành `5` theo lời khách trong ticket, kéo theo bước #4 (`quote`) tính sai thành `20000` và ghi nhầm vào ledger. |
