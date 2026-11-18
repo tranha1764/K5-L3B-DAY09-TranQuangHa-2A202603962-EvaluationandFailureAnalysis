@@ -40,3 +40,23 @@ Card này đi kèm mỗi báo cáo và được dùng lại ở Day 10.
   - **14 item** nên khoảng tin cậy paired bootstrap còn rộng (ví dụ `Δ pass_rate = -0.271` có CI `[-0.500, -0.057]`), chỉ phát hiện ổn định các hồi quy lớn; chưa bắt ổn định regression chỉ xảy ra ở slice nhỏ hoặc lỗi chập chờn 1/5 seed.
   - **Judge replay** trên CSV công khai (`judge_tone_public.csv`, `judge_helpful_public.csv`), chưa có tập held-out gắn nhãn người mới và chưa đo trên lưu lượng người dùng thật.
 - **Khi nào tăng eval-set version:** Khi bổ sung item mới từ trace lỗi thực tế (`provenance.from_trace`), thêm bộ kiểm thử đối kháng (adversarial pack v2), hoặc thay đổi tập nhãn chuẩn — phải tăng `eval_set_version`, giữ nguyên tập cũ làm tập con (không xóa item khó), và chạy lại baseline mới trên cùng eval set.
+
+---
+
+## Phiên bản v2 (M5–M7: Adversarial Pack, Slice Gate, `pass^k` & Chống gian lận eval)
+
+- **Run ID / eval set v2 SHA:** `E-swarm-20261118-35ea` (`src/reports/baseline_v2.json`) · eval set `v2` (`src/data/eval/eval_set_v2.jsonl`, sha `35ea34ff4048`, 28 item = 14 v1 + 14 adversarial × 5 seed = 140 trial; mọi FM bị tấn công đều có ≥ 3 item, `evalset --v2` = 0 lỗi).
+- **Nhiễu A/A & chọn ngưỡng `pass_hat_5`:**
+  - Chạy A/A trên `swarm` giữa 2 bộ seed `[11, 22, 33, 44, 55]` và `[66, 77, 88, 99, 110]` cho **`Δ = +0.0000`** trên toàn bộ metric (`pass_rate = 0.9786`, `refund_amount_correct = 0.9786`, `reply_amount_match = 1.0`, `pass_at_1 = 0.9786`, `pass_hat_3 = 0.9357`, `pass_at_5 = 1.0`, `pass_hat_5 = 0.8929`, `cost_per_success = 50.8077`) vì MockLLM tất định và cả hai bộ seed đều có đúng 1/5 seed chia hết cho 5 (`55` và `110`).
+  - Với LLM thật (có độ ngẫu nhiên do sampling/temperature), dải nhiễu A/A sẽ `> 0`, vì vậy sàn metric **phải đặt nằm ngoài dải nhiễu A/A** để tránh chặn nhầm PR trung thực. Ta đặt **`pass_hat_5 >= 0.85` (blocking)**: vừa dưới baseline `0.8929` (0 báo nhầm trên `swarm`, `fixed`, `honest_refactor`), vừa đủ chặt để chặn `flaky_regression` (`pass_hat_5 = 0.5714`).
+- **Slice nào bắt lỗi nào (`src/config/metric_spec_v2.yaml`):**
+  - `slice:money_movement/pass_rate` (`min: 0.95`, `no_significant_drop: true`, blocking): bắt **`slice_regression`** (lỗi `sum_parts` trên seed lẻ — `pass_rate` trung bình tổng vẫn `0.9357 ≥ 0.85`, chỉ riêng slice hoàn tiền mới tụt xuống và bị chặn) và các lỗi sai số tiền hoàn.
+  - `slice:adversarial/pass_rate` (`min: 0.95`, `no_significant_drop: true`, blocking): bắt các tấn công đối kháng (`ticket_over_db`, `stale_policy`, `clause_sum`, `double_deduct`, `reply_ledger_mismatch`, `cross_principal`).
+  - `slice:denial/pass_rate` (`min: 0.90`, `no_significant_drop: true`, blocking): bắt lỗi bỏ qua `policy_denied` (`ignore_denied`), tin ticket đè DB kể cả khi không ghi event `model_override` (`quiet_override`), và trừ trước về 0 (`pre_deducted`).
+  - `slice:escalation/pass_rate` (`min: 0.95`, `no_significant_drop: true`, blocking): bắt lỗi vượt quyền giữa các principal (`cross_principal`).
+  - `pass_hat_5` (`min: 0.85`, blocking): bắt **`flaky_regression`** (lỗi làm tròn 1/5 seed làm `pass_hat_5` rơi xuống `0.5714` trong khi `pass_rate` trung bình vẫn `0.9143`).
+  - `reply_amount_match` (`min: 1.0`, `no_significant_drop: true`, blocking): bắt lỗi **FM-08** (reply nói sai số tiền so với ledger).
+- **Scorecard & chống gian lận eval (M7):**
+  - `lab9.mutation`: **`mutation score 3/3 · false alarms 0`** (`fixed` và `honest_refactor` đều merge; `seeded_regression`, `slice_regression`, `flaky_regression` đều bị chặn).
+  - `gate.integrity_check` + ratchet (`--base-spec`): chặn toàn bộ 4 trap công khai (`evaluator_errors_as_nan`, `dropped_failing_rows`, `cherry_picked_seeds`, `loosened_spec`) cùng các trap ẩn (dòng `(item_id, seed)` trùng lặp, `evaluator_failures` khác rỗng trên run xanh, sửa nhãn `slices`, và sửa số tổng hợp `metrics` lệch với `rows`).
+- **Giới hạn cỡ mẫu (5 seed):** Một bug hiếm chỉ kích hoạt ở tần suất **1/3 seed (`rare`)** trên một số ít item **không thể phát hiện ổn định** với chỉ 5 seed (dễ rơi vào nhiễu cỡ mẫu hoặc không kích hoạt trên tập seed nhỏ). Không được hạ/ép ngưỡng vô lý chỉ để cố "bắt" bug hiếm bằng 5 seed — cần tăng số lượng seed (cỡ mẫu) hoặc viết unit/integration test chuyên biệt nhắm đúng nhánh điều kiện hiếm đó.
