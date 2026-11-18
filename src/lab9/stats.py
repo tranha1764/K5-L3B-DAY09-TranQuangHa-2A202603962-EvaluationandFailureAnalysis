@@ -76,8 +76,32 @@ def paired_bootstrap(a: Sequence[float], b: Sequence[float], *, n_resamples: int
     """a[i], b[i] = per-item mean over seeds, SAME items, SAME order.
     Return (mean(a)-mean(b), lo, hi) with scipy.stats.bootstrap(paired=True, method="percentile",
     rng=numpy.random.default_rng(rng)). If a == b everywhere return (0.0, 0.0, 0.0)."""
-    # TODO M4
-    raise NotImplementedError
+    import numpy as np
+    from scipy.stats import bootstrap
+
+    if len(a) != len(b):
+        raise ValueError(f"length mismatch: a={len(a)}, b={len(b)}")
+    if len(a) == 0:
+        raise ValueError("paired_bootstrap requires at least one paired item")
+
+    arr_a = np.asarray(a, dtype=float)
+    arr_b = np.asarray(b, dtype=float)
+    # Nếu hai phiên bản giống hệt nhau trên mọi item -> hiệu và CI đều bằng 0
+    if np.array_equal(arr_a, arr_b):
+        return (0.0, 0.0, 0.0)
+
+    diff_mean = float(np.mean(arr_a - arr_b))
+    # Paired bootstrap theo từng item (cùng item, cùng thứ tự) bằng phương pháp percentile
+    res = bootstrap(
+        (arr_a, arr_b),
+        statistic=lambda x, y, axis=-1: np.mean(x - y, axis=axis),
+        paired=True,
+        n_resamples=n_resamples,
+        confidence_level=confidence,
+        method="percentile",
+        rng=np.random.default_rng(rng),
+    )
+    return (diff_mean, float(res.confidence_interval.low), float(res.confidence_interval.high))
 
 
 def pass_at_k(n: int, c: int, k: int) -> float:
